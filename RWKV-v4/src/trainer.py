@@ -57,7 +57,7 @@ class Trainer(LightningLite):
         self.cuda_id = int(str(self.device).strip('cuda:'))
         print('[0]')
         model = GPT(GPTConfig(train_dataset.vocab_size, train_dataset.ctx_len, model_type=m_cfg.model_type,
-                        n_layer=m_cfg.n_layer, n_embd=m_cfg.n_embd))
+                        n_layer=m_cfg.n_layer, n_embd=m_cfg.n_embd, use_k = m_cfg.use_k, out_gate = m_cfg.out_gate, mix_times = m_cfg.mix_times))
         print('[1]')
         with torch.no_grad():
             if m_cfg.LOAD_MODEL:
