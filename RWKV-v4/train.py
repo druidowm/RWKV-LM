@@ -9,6 +9,19 @@ import torch
 import numpy as np
 from src.binidx import MMapIndexedDataset
 
+import argparse
+
+parser = argparse.ArgumentParser(description='RWKV-v4')
+#whether to use k
+parser.add_argument('--use_k', type=str, default="True", help='whether to use k')
+#whether to use out gate
+parser.add_argument('--out_gate', type=str, default="True", help='whether to use out gate')
+#whether to use time mixing
+parser.add_argument('--time_mixing', type=str, default="True", help='whether to use time mixing')
+
+args = parser.parse_args()
+
+
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S", level=logging.INFO,)
@@ -203,7 +216,9 @@ if __name__ == '__main__':
     m_cfg.EPOCH_BEGIN = EPOCH_BEGIN
     m_cfg.LOAD_MODEL = LOAD_MODEL
     m_cfg.MODEL_NAME = MODEL_NAME
-    m_cfg.use_k = False
+    m_cfg.use_k = (args.use_k == "True")
+    m_cfg.out_gate = (args.out_gate == "True")
+    m_cfg.mix_times = (args.time_mixing == "True")
 
     if os.environ['RWKV_DEEPSPEED'] == '0':
         if os.environ['RWKV_FLOAT_MODE'] == 'fp16':

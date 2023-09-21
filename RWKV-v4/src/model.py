@@ -180,6 +180,9 @@ class RWKV_TimeMix(torch.jit.ScriptModule):
         self.layer_id = layer_id
         self.ctx_len = config.ctx_len
         self.n_embd = config.n_embd
+        self.out_gate = config.out_gate
+
+        self.mix_times = config.mix_times
 
         attn_sz = config.n_embd
 
@@ -224,10 +227,16 @@ class RWKV_TimeMix(torch.jit.ScriptModule):
     def jit_func(self, x):
 
         # Mix x with the previous timestep to produce xk, xv, xr
-        xx = self.time_shift(x)
-        xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
-        xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
-        xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+
+        if self.mix_times:
+            xx = self.time_shift(x)
+            xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+            xv = x * self.time_mix_v + xx * (1 - self.time_mix_v)
+            xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+        else:
+            xk = x
+            xv = x
+            xr = x
 
         # Use xk, xv, xr to produce k, v, r
         k = self.key(xk)
@@ -241,8 +250,12 @@ class RWKV_TimeMix(torch.jit.ScriptModule):
         B, T, C = x.size() # x = (Batch,Time,Channel)
 
         sr, k, v = self.jit_func(x)
+        
+        rwkv = RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v, self.use_k)
 
-        rwkv = sr * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v, self.use_k)
+        if self.out_gate:
+            rwkv = sr * rwkv
+
         rwkv = self.output(rwkv)
         return rwkv
 
@@ -253,6 +266,8 @@ class RWKV_ChannelMix(torch.jit.ScriptModule):
         self.layer_id = layer_id
 
         self.time_shift = nn.ZeroPad2d((0, 0, 1, -1))
+
+        self.mix_times = config.mix_times
 
         with torch.no_grad(): # fancy init of time_mix
             ratio_1_to_almost0 = (1.0 - (layer_id / config.n_layer)) # 1 to ~0
@@ -274,9 +289,13 @@ class RWKV_ChannelMix(torch.jit.ScriptModule):
 
     @torch.jit.script_method
     def forward(self, x):
-        xx = self.time_shift(x)
-        xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
-        xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+        if self.mix_times:
+            xx = self.time_shift(x)
+            xk = x * self.time_mix_k + xx * (1 - self.time_mix_k)
+            xr = x * self.time_mix_r + xx * (1 - self.time_mix_r)
+        else:
+            xk = x
+            xr = x
 
         k = self.key(xk)
         k = torch.square(torch.relu(k))
