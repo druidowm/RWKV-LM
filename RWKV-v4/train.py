@@ -203,6 +203,7 @@ if __name__ == '__main__':
     m_cfg.EPOCH_BEGIN = EPOCH_BEGIN
     m_cfg.LOAD_MODEL = LOAD_MODEL
     m_cfg.MODEL_NAME = MODEL_NAME
+    m_cfg.use_k = False
 
     if os.environ['RWKV_DEEPSPEED'] == '0':
         if os.environ['RWKV_FLOAT_MODE'] == 'fp16':

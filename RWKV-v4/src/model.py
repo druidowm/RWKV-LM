@@ -45,6 +45,8 @@ wkv_cuda = load(name="wkv", sources=["cuda/wkv_op.cpp", "cuda/wkv_cuda.cu"],
                 verbose=True, extra_cuda_cflags=['-res-usage', '--maxrregcount 60', '--use_fast_math', '-O3', '-Xptxas -O3', f'-DTmax={T_MAX}'])
 
 class WKV(torch.autograd.Function):
+    use_k = True
+
     @staticmethod
     def forward(ctx, B, T, C, w, u, k, v):
         ctx.B = B
@@ -62,6 +64,11 @@ class WKV(torch.autograd.Function):
             u = u.float().contiguous()
             k = k.float().contiguous()
             v = v.float().contiguous()
+
+        if not WKV.use_k:
+            logger.info("zeroing k")
+            k = torch.zeros(k.shape, device='cuda', memory_format=torch.contiguous_format).contiguous()
+        
         ctx.save_for_backward(w, u, k, v)
         y = torch.empty((B, T, C), device='cuda', memory_format=torch.contiguous_format)
         wkv_cuda.forward(B, T, C, w, u, k, v, y)
@@ -88,6 +95,11 @@ class WKV(torch.autograd.Function):
             wkv_cuda.backward(B, T, C, w, u, k, v, gy.contiguous(), gw, gu, gk, gv)
         else:
             wkv_cuda.backward(B, T, C, w, u, k, v, gy.float().contiguous(), gw, gu, gk, gv)
+
+        if not WKV.use_k:
+            logger.info("zeroing k")
+            gk = torch.zeros(gk.shape, device='cuda', memory_format=torch.contiguous_format).contiguous()
+        
         gw = torch.sum(gw, dim=0)
         gu = torch.sum(gu, dim=0)
         if '32' in os.environ['RWKV_FLOAT_MODE']:
@@ -97,7 +109,8 @@ class WKV(torch.autograd.Function):
         elif os.environ['RWKV_FLOAT_MODE'] == 'bf16':
             return (None, None, None, gw.bfloat16(), gu.bfloat16(), gk.bfloat16(), gv.bfloat16())
 
-def RUN_CUDA(B, T, C, w, u, k, v):
+def RUN_CUDA(B, T, C, w, u, k, v, use_k):
+    WKV.use_k = use_k
     return WKV.apply(B, T, C, w.cuda(), u.cuda(), k.cuda(), v.cuda())
 
 ########################################################################################################
@@ -170,6 +183,8 @@ class RWKV_TimeMix(torch.jit.ScriptModule):
 
         attn_sz = config.n_embd
 
+        self.use_k = config.use_k
+
         with torch.no_grad(): # fancy init
             ratio_0_to_1 = (layer_id / (config.n_layer - 1)) # 0 to 1
             ratio_1_to_almost0 = (1.0 - (layer_id / config.n_layer)) # 1 to ~0
@@ -227,7 +242,7 @@ class RWKV_TimeMix(torch.jit.ScriptModule):
 
         sr, k, v = self.jit_func(x)
 
-        rwkv = sr * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v)
+        rwkv = sr * RUN_CUDA(B, T, C, self.time_decay, self.time_first, k, v, self.use_k)
         rwkv = self.output(rwkv)
         return rwkv
 
