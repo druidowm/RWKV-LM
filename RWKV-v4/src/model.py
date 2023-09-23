@@ -67,7 +67,7 @@ class WKV(torch.autograd.Function):
 
         if not WKV.use_k:
             logger.info("zeroing k")
-            k = torch.zeros(k.shape, device='cuda', memory_format=torch.contiguous_format).contiguous()
+            k = torch.zeros(k.shape, device='cuda').contiguous()
         
         ctx.save_for_backward(w, u, k, v)
         y = torch.empty((B, T, C), device='cuda', memory_format=torch.contiguous_format)
@@ -98,7 +98,7 @@ class WKV(torch.autograd.Function):
 
         if not WKV.use_k:
             logger.info("zeroing k")
-            gk = torch.zeros(gk.shape, device='cuda', memory_format=torch.contiguous_format).contiguous()
+            gk = torch.zeros(gk.shape, device='cuda').contiguous()
         
         gw = torch.sum(gw, dim=0)
         gu = torch.sum(gu, dim=0)
